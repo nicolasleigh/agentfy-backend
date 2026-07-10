@@ -1,15 +1,20 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import JSON, DateTime, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, DateTime, ForeignKey, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+if TYPE_CHECKING:
+    from app.models.user import User
 
 
 class ChatCompletion(Base):
     __tablename__ = "chat_completions"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     request: Mapped[dict] = mapped_column(JSON, nullable=False)
     response: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -18,3 +23,5 @@ class ChatCompletion(Base):
         server_default=func.now(),
         nullable=False,
     )
+
+    user: Mapped["User | None"] = relationship(back_populates="chat_completions")
