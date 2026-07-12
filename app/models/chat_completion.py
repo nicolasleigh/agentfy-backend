@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 if TYPE_CHECKING:
+    from app.models.conversation import Conversation
     from app.models.user import User
 
 
@@ -15,6 +16,10 @@ class ChatCompletion(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    conversation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("conversations.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     model: Mapped[str] = mapped_column(String(128), nullable=False)
     request: Mapped[dict] = mapped_column(JSON, nullable=False)
     response: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -25,3 +30,4 @@ class ChatCompletion(Base):
     )
 
     user: Mapped["User | None"] = relationship(back_populates="chat_completions")
+    conversation: Mapped["Conversation | None"] = relationship(back_populates="chat_completions")

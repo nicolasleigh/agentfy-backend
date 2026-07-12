@@ -8,6 +8,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.chat_completion import ChatCompletion
+    from app.models.conversation import Conversation
 
 
 class User(Base):
@@ -25,3 +26,7 @@ class User(Base):
     )
 
     chat_completions: Mapped[list["ChatCompletion"]] = relationship(back_populates="user")
+    conversations: Mapped[list["Conversation"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )

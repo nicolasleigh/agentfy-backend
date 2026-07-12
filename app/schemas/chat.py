@@ -15,6 +15,7 @@ class ChatCompletionRequest(BaseModel):
     messages: list[ChatMessage] = Field(min_length=1)
     temperature: float | None = Field(default=1.0, ge=0, le=2)
     stream: bool = False
+    conversation_id: str | None = None
 
 
 class ChatCompletionChoice(BaseModel):

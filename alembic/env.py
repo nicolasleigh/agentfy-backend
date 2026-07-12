@@ -12,6 +12,8 @@ from app.core.config import settings
 from app.db.base import Base
 from app.models import (
     chat_completion,  # noqa: F401
+    conversation,  # noqa: F401
+    message,  # noqa: F401
     user,  # noqa: F401
 )
 
