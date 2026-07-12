@@ -1,33 +1,27 @@
-from collections.abc import AsyncGenerator
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.providers.base import LLMResult
+
 
 @pytest.fixture(autouse=True)
-def mock_ollama() -> AsyncGenerator[MagicMock, None]:
-    """Mock ChatService._call_ollama so tests don't need a running Ollama instance."""
-    from app.services.chat_service import ChatService
+def mock_llm_provider() -> Generator[MagicMock, None, None]:
+    """Mock the LLM provider so tests never make real HTTP calls.
 
-    with patch.object(ChatService, "_call_ollama", new_callable=AsyncMock) as mock:
-        mock.return_value = {
-            "id": "ollama-test",
-            "model": "demo-chat",
-            "created": 1234567890,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": "Mock Ollama reply: This is a test response.",
-                    },
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {
-                "prompt_tokens": 10,
-                "completion_tokens": 5,
-                "total_tokens": 15,
-            },
-        }
-        yield mock
+    Patches ``get_llm_provider`` to return a mock whose ``chat_completion``
+    method returns a controlled ``LLMResult``.
+    """
+    mock_provider = MagicMock()
+    mock_provider.chat_completion = AsyncMock(return_value=LLMResult(
+        content="Mock Ollama reply: This is a test response.",
+        model="demo-chat",
+        created=1234567890,
+        prompt_tokens=10,
+        completion_tokens=5,
+        total_tokens=15,
+    ))
+
+    with patch("app.services.chat_service.get_llm_provider", return_value=mock_provider):
+        yield mock_provider

@@ -60,14 +60,13 @@ def test_chat_completion_requires_authentication() -> None:
     assert response.status_code == 401
 
 
-def test_chat_completion_ollama_error() -> None:
-    """Verify that an Ollama error is surfaced as a proper HTTP error."""
-    from unittest.mock import AsyncMock, patch
+def test_chat_completion_llm_error() -> None:
+    """Verify that an LLM provider error is surfaced as a proper HTTP error."""
+    from unittest.mock import AsyncMock, MagicMock, patch
 
     from fastapi.testclient import TestClient
 
     from app.main import app
-    from app.services.chat_service import ChatService
 
     client = TestClient(app)
 
@@ -82,13 +81,12 @@ def test_chat_completion_ollama_error() -> None:
     token = resp.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    with patch.object(ChatService, "_call_ollama", new_callable=AsyncMock) as mock:
-        from fastapi import HTTPException, status
-        mock.side_effect = HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cannot connect to Ollama",
-        )
+    mock_provider = MagicMock()
+    mock_provider.chat_completion = AsyncMock(
+        side_effect=ConnectionError("Cannot connect to Ollama")
+    )
 
+    with patch("app.services.chat_service.get_llm_provider", return_value=mock_provider):
         chat_resp = client.post(
             "/v1/chat/completions",
             headers=headers,
@@ -98,3 +96,4 @@ def test_chat_completion_ollama_error() -> None:
             },
         )
         assert chat_resp.status_code == 503
+        assert "Cannot connect" in chat_resp.json()["detail"]

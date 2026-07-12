@@ -15,7 +15,16 @@ class Settings(BaseSettings):
     jwt_secret_key: str = "change-me-in-production-use-at-least-32-bytes"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+
+    # LLM Provider
+    llm_provider: str = "ollama"
+
+    # Ollama
     ollama_base_url: str = "http://localhost:11434"
+
+    # OpenAI-compatible (used by llm_provider="openai")
+    openai_api_key: str = ""
+    openai_base_url: str = "https://api.openai.com/v1"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
