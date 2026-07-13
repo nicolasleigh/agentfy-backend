@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     environment: str = "local"
     debug: bool = False
     api_v1_prefix: str = "/v1"
-    database_url: str = "sqlite+aiosqlite:///./data/app.db"
+    database_url: str = "postgresql+asyncpg://app:app_secret@localhost:5432/ai_chat"
     backend_cors_origins: list[AnyHttpUrl] = Field(default_factory=list)
     jwt_secret_key: str = "change-me-in-production-use-at-least-32-bytes"
     jwt_algorithm: str = "HS256"
