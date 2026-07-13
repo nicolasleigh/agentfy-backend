@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 
 from pydantic import BaseModel
 
 
 class LLMResult(BaseModel):
-    """Normalised result from any LLM provider."""
+    """Normalised result from any LLM provider (non-streaming)."""
 
     content: str
     role: str = "assistant"
@@ -16,6 +17,17 @@ class LLMResult(BaseModel):
     created: int  # unix timestamp
 
 
+class LLMStreamChunk(BaseModel):
+    """A single chunk yielded during streaming.
+
+    Every chunk carries ``content`` (the delta). The final chunk sets
+    ``finish_reason`` — earlier chunks leave it ``None``.
+    """
+
+    content: str = ""
+    finish_reason: str | None = None
+
+
 class BaseLLMProvider(ABC):
     """Abstract interface every LLM provider must implement."""
 
@@ -25,22 +37,20 @@ class BaseLLMProvider(ABC):
         model: str,
         messages: list[dict],
         temperature: float | None = None,
-        stream: bool = False,
     ) -> LLMResult:
-        """Send a chat completion request and return a normalised result.
+        """Non-streaming completion — returns the full result at once."""
+        ...
 
-        Args:
-            model: Model name (e.g. ``"llama3.2"``, ``"gpt-4o"``).
-            messages: List of ``{"role": …, "content": …}`` dicts.
-            temperature: Sampling temperature (provider default if ``None``).
-            stream: Whether to stream — providers may raise if unsupported.
+    @abstractmethod
+    async def chat_completion_stream(
+        self,
+        model: str,
+        messages: list[dict],
+        temperature: float | None = None,
+    ) -> AsyncGenerator[LLMStreamChunk, None]:
+        """Streaming completion — yields chunks as they arrive.
 
-        Returns:
-            LLMResult: Normalised response.
-
-        Raises:
-            ConnectionError: Provider unreachable.
-            TimeoutError: Request timed out.
-            RuntimeError: Provider returned an error (with detail in args).
+        The last yielded chunk carries ``finish_reason``.
         """
         ...
+        # yield  # pragma: no cover — makes the method an async generator

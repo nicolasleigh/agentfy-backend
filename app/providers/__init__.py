@@ -1,13 +1,14 @@
 from functools import lru_cache
 
 from app.core.config import settings
-from app.providers.base import BaseLLMProvider, LLMResult
+from app.providers.base import BaseLLMProvider, LLMResult, LLMStreamChunk
 from app.providers.ollama import OllamaProvider
 from app.providers.openai import OpenAIProvider
 
 __all__ = [
     "BaseLLMProvider",
     "LLMResult",
+    "LLMStreamChunk",
     "get_llm_provider",
     "OllamaProvider",
     "OpenAIProvider",

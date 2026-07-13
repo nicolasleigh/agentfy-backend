@@ -97,3 +97,97 @@ def test_chat_completion_llm_error() -> None:
         )
         assert chat_resp.status_code == 503
         assert "Cannot connect" in chat_resp.json()["detail"]
+
+
+def test_chat_completion_stream_returns_sse() -> None:
+    """Verify that stream=true returns SSE event stream."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # Register and login
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "password123"},
+    )
+    assert resp.status_code == 201
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+
+    # Parse SSE lines
+    lines = response.text.strip().split("\n\n")
+    assert len(lines) >= 2  # at least content chunks + [DONE]
+
+    # First data chunk
+    assert lines[0].startswith("data: ")
+    import json
+    first = json.loads(lines[0][6:])
+    assert first["choices"][0]["delta"]["content"] == "Mock "
+
+    # Last chunk should be [DONE]
+    assert lines[-1] == "data: [DONE]"
+
+
+def test_chat_completion_stream_accumulates_full_content() -> None:
+    """After streaming, the conversation should have the full assistant reply."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post(
+        "/v1/auth/register",
+        json={"email": email, "password": "password123"},
+    )
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+        },
+    )
+
+    # The full reply should be saved to messages
+    conv_resp = client.get("/v1/conversations", headers=headers)
+    conv_id = conv_resp.json()["conversations"][0]["id"]
+
+    msg_resp = client.get(f"/v1/conversations/{conv_id}/messages", headers=headers)
+    messages = msg_resp.json()["messages"]
+    assert len(messages) == 2
+    assert messages[1]["content"] == "Mock stream reply."
+
+
+def test_chat_completion_stream_requires_auth() -> None:
+    """Streaming endpoint should still require authentication."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    response = client.post(
+        "/v1/chat/completions",
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "hello"}],
+            "stream": True,
+        },
+    )
+    assert response.status_code == 401
