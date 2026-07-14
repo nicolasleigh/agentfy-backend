@@ -13,6 +13,8 @@ from app.db.base import Base
 from app.models import (
     chat_completion,  # noqa: F401
     conversation,  # noqa: F401
+    document,  # noqa: F401
+    document_chunk,  # noqa: F401
     message,  # noqa: F401
     user,  # noqa: F401
 )

@@ -18,6 +18,7 @@ from app.schemas.chat import (
     ChatCompletionUsage,
     ChatMessage,
 )
+from app.services.embedding_service import EmbeddingService
 
 
 class ChatService:
@@ -37,10 +38,13 @@ class ChatService:
         now = datetime.now(UTC)
         completion_id = f"chatcmpl-{uuid4().hex}"
 
+        # RAG enrichment: retrieve context and inject into messages
+        messages = await self._enrich_with_context(payload, user)
+
         try:
             result: LLMResult = await self.llm.chat_completion(
                 model=payload.model,
-                messages=[m.model_dump() for m in payload.messages],
+                messages=messages,
                 temperature=payload.temperature,
             )
         except ConnectionError as e:
@@ -101,13 +105,16 @@ class ChatService:
 
         conversation = await self._resolve_conversation(payload, user)
 
+        # RAG enrichment: retrieve context and inject into messages
+        messages = await self._enrich_with_context(payload, user)
+
         # Accumulate the full reply as chunks arrive
         full_content: list[str] = []
         final_reason: str = "stop"
         try:
             async for chunk in self.llm.chat_completion_stream(
                 model=payload.model,
-                messages=[m.model_dump() for m in payload.messages],
+                messages=messages,
                 temperature=payload.temperature,
             ):
                 if chunk.content:
@@ -149,6 +156,65 @@ class ChatService:
         await self._persist_completion(
             payload, response, assistant_message, conversation, completion_id, now, user,
         )
+
+    # ------------------------------------------------------------------
+    # RAG enrichment
+    # ------------------------------------------------------------------
+
+    async def _enrich_with_context(
+        self,
+        payload: ChatCompletionRequest,
+        user: User,
+    ) -> list[dict]:
+        """Retrieve relevant document chunks and inject them into the messages.
+
+        If ``rag_enabled`` is ``False`` or no relevant context is found,
+        the original messages are returned unchanged.
+        """
+        if not payload.rag_enabled:
+            return [m.model_dump() for m in payload.messages]
+
+        # Find the last user message to use as the retrieval query
+        query = ""
+        for msg in reversed(payload.messages):
+            if msg.role == "user":
+                query = msg.content
+                break
+
+        if not query:
+            return [m.model_dump() for m in payload.messages]
+
+        # Vector search
+        try:
+            emb_service = EmbeddingService(self.session)
+            chunks = await emb_service.retrieve(query, user, top_k=5)
+        except Exception:
+            # If retrieval fails (e.g. no documents, DB error), fall through
+            return [m.model_dump() for m in payload.messages]
+
+        if not chunks:
+            return [m.model_dump() for m in payload.messages]
+
+        # Build context string
+        context_parts: list[str] = []
+        for chunk in chunks:
+            source = chunk.get("filename", "unknown")
+            content = chunk.get("content", "")
+            context_parts.append(f"[{source}]: {content}")
+
+        context_text = "\n\n".join(context_parts)
+
+        system_prompt = (
+            "You are a helpful assistant with access to the following reference material. "
+            "Answer the user's question based on this context. "
+            "If the context doesn't contain enough information, answer based on your own knowledge."
+            f"\n\nContext:\n{context_text}"
+        )
+
+        return [
+            {"role": "system", "content": system_prompt},
+            *[m.model_dump() for m in payload.messages],
+        ]
 
     # ------------------------------------------------------------------
     # Shared helpers

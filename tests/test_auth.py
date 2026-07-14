@@ -1,3 +1,4 @@
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -191,3 +192,153 @@ def test_chat_completion_stream_requires_auth() -> None:
         },
     )
     assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# RAG context injection tests
+# ---------------------------------------------------------------------------
+
+
+def test_rag_injects_context_when_retrieved(mock_rag_retrieve: Any) -> None:
+    """When RAG context is found, a system message is prepended."""
+    mock_rag_retrieve.return_value = [
+        {"chunk_id": "c1", "content": "Paris is the capital of France.",
+         "document_id": "d1", "filename": "geography.txt", "score": 0.15},
+    ]
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post("/v1/auth/register",
+                       json={"email": email, "password": "password123"})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_resp = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "What is the capital of France?"}],
+            "rag_enabled": True,
+        },
+    )
+    assert chat_resp.status_code == 200
+    # The mock LLM receives the enriched messages and replies normally
+    data = chat_resp.json()
+    assert data["choices"][0]["message"]["content"]
+
+
+def test_rag_skips_when_disabled(mock_rag_retrieve: Any) -> None:
+    """``rag_enabled=False`` should skip context injection entirely."""
+    mock_rag_retrieve.return_value = [
+        {"chunk_id": "c1", "content": "Secret info.",
+         "document_id": "d1", "filename": "secret.txt", "score": 0.1},
+    ]
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post("/v1/auth/register",
+                       json={"email": email, "password": "password123"})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_resp = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "Tell me something"}],
+            "rag_enabled": False,
+        },
+    )
+    assert chat_resp.status_code == 200
+    data = chat_resp.json()
+    assert data["choices"][0]["message"]["content"]
+
+
+def test_rag_skips_when_no_context(mock_rag_retrieve: Any) -> None:
+    """When retrieve returns empty, no system prompt is injected."""
+    mock_rag_retrieve.return_value = []
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post("/v1/auth/register",
+                       json={"email": email, "password": "password123"})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_resp = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "Hi"}],
+            "rag_enabled": True,
+        },
+    )
+    assert chat_resp.status_code == 200
+
+
+def test_rag_stream_injects_context(mock_rag_retrieve: Any) -> None:
+    """RAG context is also injected during streaming."""
+    mock_rag_retrieve.return_value = [
+        {"chunk_id": "c1", "content": "Relevant data.",
+         "document_id": "d1", "filename": "data.txt", "score": 0.2},
+    ]
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post("/v1/auth/register",
+                       json={"email": email, "password": "password123"})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "Query with RAG"}],
+            "stream": True,
+            "rag_enabled": True,
+        },
+    )
+    assert response.status_code == 200
+    assert response.text.strip().endswith("data: [DONE]")
+
+
+def test_rag_defaults_to_enabled(mock_rag_retrieve: Any) -> None:
+    """``rag_enabled`` defaults to True when omitted."""
+    mock_rag_retrieve.return_value = []
+
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    email = f"{uuid4().hex}@example.com"
+    resp = client.post("/v1/auth/register",
+                       json={"email": email, "password": "password123"})
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    chat_resp = client.post(
+        "/v1/chat/completions",
+        headers=headers,
+        json={
+            "model": "demo-chat",
+            "messages": [{"role": "user", "content": "Hello"}],
+        },
+    )
+    assert chat_resp.status_code == 200

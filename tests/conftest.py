@@ -35,7 +35,7 @@ def mock_llm_provider() -> Generator[MagicMock, None, None]:
     ))
 
     # Streaming — async generator
-    async def _stream(**kwargs) -> AsyncGenerator[LLMStreamChunk, None]:
+    async def _stream(model, messages, temperature=None) -> AsyncGenerator[LLMStreamChunk, None]:
         yield LLMStreamChunk(content="Mock ")
         yield LLMStreamChunk(content="stream reply.")
         yield LLMStreamChunk(content="", finish_reason="stop")
@@ -44,3 +44,32 @@ def mock_llm_provider() -> Generator[MagicMock, None, None]:
 
     with patch("app.services.chat_service.get_llm_provider", return_value=mock_provider):
         yield mock_provider
+
+
+@pytest.fixture(autouse=True)
+def mock_embedding_provider() -> Generator[MagicMock, None, None]:
+    """Mock the embedding provider so tests never call the real Ollama."""
+    mock_embedder = MagicMock()
+
+    async def _embed(texts: list[str]) -> list[list[float]]:
+        return [[0.042] * 768 for _ in texts]
+
+    mock_embedder.embed = AsyncMock(side_effect=_embed)
+
+    with patch("app.services.embedding_service.get_embedding_provider",
+               return_value=mock_embedder):
+        yield mock_embedder
+
+
+@pytest.fixture(autouse=True)
+def mock_rag_retrieve() -> Generator[MagicMock, None, None]:
+    """Mock ``EmbeddingService.retrieve`` so RAG never hits pgvector SQL.
+
+    By default returns an empty list (no context injected).
+    RAG-specific tests override this fixture's return value.
+    """
+    from app.services.embedding_service import EmbeddingService
+
+    mock_retrieve = AsyncMock(return_value=[])
+    with patch.object(EmbeddingService, "retrieve", mock_retrieve):
+        yield mock_retrieve

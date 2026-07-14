@@ -16,6 +16,7 @@ class ChatCompletionRequest(BaseModel):
     temperature: float | None = Field(default=1.0, ge=0, le=2)
     stream: bool = False
     conversation_id: str | None = None
+    rag_enabled: bool = True
 
 
 class ChatCompletionChoice(BaseModel):

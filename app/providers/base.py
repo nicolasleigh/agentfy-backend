@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Sequence
 
 from pydantic import BaseModel
 
@@ -53,4 +53,24 @@ class BaseLLMProvider(ABC):
         The last yielded chunk carries ``finish_reason``.
         """
         ...
-        # yield  # pragma: no cover — makes the method an async generator
+
+
+class BaseEmbeddingProvider(ABC):
+    """Abstract interface for text embedding providers."""
+
+    @abstractmethod
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        """Convert a sequence of texts into a list of embedding vectors.
+
+        Args:
+            texts: One or more text strings to embed.
+
+        Returns:
+            A list of vectors, one per input text. Each vector is a
+            ``list[float]`` of fixed dimension (e.g. 768 for nomic-embed-text).
+
+        Raises:
+            ConnectionError: Provider unreachable.
+            RuntimeError: Provider returned an error.
+        """
+        ...

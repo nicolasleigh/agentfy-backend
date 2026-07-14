@@ -1,40 +1,72 @@
-"""Tests for the LLM provider abstraction layer."""
+"""Tests for the LLM / embedding provider abstraction layer."""
 
 import pytest
 
-from app.providers import _PROVIDER_REGISTRY, get_llm_provider, OllamaProvider, OpenAIProvider
+from app.providers import (
+    _EMBEDDING_PROVIDER_REGISTRY,
+    _LLM_PROVIDER_REGISTRY,
+    get_embedding_provider,
+    get_llm_provider,
+    OllamaEmbeddingProvider,
+    OllamaProvider,
+    OpenAIProvider,
+)
 from app.providers.base import LLMResult
 
 
-class TestProviderRegistry:
-    def test_registry_contains_ollama(self) -> None:
-        assert "ollama" in _PROVIDER_REGISTRY
-        assert _PROVIDER_REGISTRY["ollama"] is OllamaProvider
+# ---------------------------------------------------------------------------
+# LLM Provider Registry
+# ---------------------------------------------------------------------------
 
-    def test_registry_contains_openai(self) -> None:
-        assert "openai" in _PROVIDER_REGISTRY
-        assert _PROVIDER_REGISTRY["openai"] is OpenAIProvider
 
-    def test_default_provider_is_ollama(self) -> None:
+class TestLLMProviderRegistry:
+    def test_llm_registry_contains_ollama(self) -> None:
+        assert "ollama" in _LLM_PROVIDER_REGISTRY
+        assert _LLM_PROVIDER_REGISTRY["ollama"] is OllamaProvider
+
+    def test_llm_registry_contains_openai(self) -> None:
+        assert "openai" in _LLM_PROVIDER_REGISTRY
+        assert _LLM_PROVIDER_REGISTRY["openai"] is OpenAIProvider
+
+    def test_default_llm_provider_is_ollama(self) -> None:
         provider = get_llm_provider()
         assert isinstance(provider, OllamaProvider)
 
-    def test_provider_is_singleton(self) -> None:
+    def test_llm_provider_is_singleton(self) -> None:
         assert get_llm_provider() is get_llm_provider()
 
-    def test_unknown_provider_raises(self) -> None:
-        """get_llm_provider validates the provider name is in the registry."""
-        from app import providers
-        # Simulate what happens when settings.llm_provider is not in the dict
+    def test_unknown_llm_provider_raises(self) -> None:
         with pytest.raises(ValueError, match="Unknown LLM provider"):
-            # Call the internal logic that raises on unknown names
             name = "nonexistent"
-            cls = providers._PROVIDER_REGISTRY.get(name)
+            cls = _LLM_PROVIDER_REGISTRY.get(name)
             if cls is None:
-                available = ", ".join(providers._PROVIDER_REGISTRY)
+                available = ", ".join(_LLM_PROVIDER_REGISTRY)
                 raise ValueError(
                     f"Unknown LLM provider: '{name}'. Available: {available}"
                 )
+
+
+# ---------------------------------------------------------------------------
+# Embedding Provider Registry
+# ---------------------------------------------------------------------------
+
+
+class TestEmbeddingProviderRegistry:
+    def test_embedding_registry_contains_ollama(self) -> None:
+        assert "ollama" in _EMBEDDING_PROVIDER_REGISTRY
+        assert _EMBEDDING_PROVIDER_REGISTRY["ollama"] is OllamaEmbeddingProvider
+
+    def test_default_embedding_provider_is_ollama(self) -> None:
+        provider = get_embedding_provider()
+        assert isinstance(provider, OllamaEmbeddingProvider)
+
+    def test_embedding_provider_is_singleton(self) -> None:
+        assert get_embedding_provider() is get_embedding_provider()
+
+
+# ---------------------------------------------------------------------------
+# LLMResult model
+# ---------------------------------------------------------------------------
 
 
 class TestLLMResult:
