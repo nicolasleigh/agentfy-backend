@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -11,9 +11,9 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str = Field(default="demo-chat", min_length=1)
-    messages: list[ChatMessage] = Field(min_length=1)
-    temperature: float | None = Field(default=1.0, ge=0, le=2)
+    model: Annotated[str, Field(default="demo-chat", min_length=1)]
+    messages: Annotated[list[ChatMessage], Field(min_length=1)]
+    temperature: Annotated[float | None, Field(default=1.0, ge=0, le=2)]
     stream: bool = False
     conversation_id: str | None = None
     rag_enabled: bool = True

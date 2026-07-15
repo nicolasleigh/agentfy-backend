@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -6,11 +7,11 @@ from app.schemas.chat import ChatRole
 
 
 class CreateConversationRequest(BaseModel):
-    title: str = Field(default="New Chat", max_length=255, min_length=1)
+    title: Annotated[str, Field(default="New Chat", max_length=255, min_length=1)]
 
 
 class UpdateConversationRequest(BaseModel):
-    title: str = Field(max_length=255, min_length=1)
+    title: Annotated[str, Field(max_length=255, min_length=1)]
 
 
 class ConversationResponse(BaseModel):
