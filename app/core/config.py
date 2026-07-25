@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import AnyHttpUrl, Field, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/v1"
     database_url: str = "postgresql+asyncpg://app:app_secret@localhost:5432/ai_chat"
-    backend_cors_origins: Annotated[list[AnyHttpUrl], Field(default_factory=list)]
+    backend_cors_origins: Annotated[list[str], Field(default_factory=list)]
     jwt_secret_key: str = "change-me-in-production-use-at-least-32-bytes"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
