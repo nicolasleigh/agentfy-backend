@@ -11,3 +11,11 @@ async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
         yield session
+
+# 方案二：try/finally（等价，但啰嗦）
+# async def get_db_session():
+#     session = async_session_factory()
+#     try:
+#         yield session
+#     finally:
+#         await session.close()
