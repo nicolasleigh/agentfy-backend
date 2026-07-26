@@ -189,7 +189,9 @@ class ChatService:
             emb_service = EmbeddingService(self.session)
             chunks = await emb_service.retrieve(query, user, top_k=5)
         except Exception:
-            # If retrieval fails (e.g. no documents, DB error), fall through
+            # If retrieval fails (e.g. no documents, DB error, missing pgvector),
+            # rollback to clear PostgreSQL's aborted transaction state
+            await self.session.rollback()
             return [m.model_dump() for m in payload.messages]
 
         if not chunks:
