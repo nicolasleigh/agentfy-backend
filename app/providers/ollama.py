@@ -28,7 +28,7 @@ class OllamaProvider(BaseLLMProvider):
             body["temperature"] = temperature
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=120, transport=httpx.AsyncHTTPTransport()) as client:
                 resp = await client.post(url, json=body)
                 resp.raise_for_status()
                 data = resp.json()
@@ -80,7 +80,7 @@ class OllamaProvider(BaseLLMProvider):
             body["temperature"] = temperature
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=120, transport=httpx.AsyncHTTPTransport()) as client:
                 async with client.stream("POST", url, json=body) as resp:
                     resp.raise_for_status()
                     async for line in resp.aiter_lines():
