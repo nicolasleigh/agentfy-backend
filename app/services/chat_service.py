@@ -106,7 +106,7 @@ class ChatService:
         conversation = await self._resolve_conversation(payload, user)
 
         # RAG enrichment: retrieve context and inject into messages
-        messages = await self._enrich_with_context(payload, user)
+        messages = await self._enrich_with_context(payload, user, protected_objects=[conversation])
 
         # Accumulate the full reply as chunks arrive
         full_content: list[str] = []
@@ -153,9 +153,15 @@ class ChatService:
         )
 
         # Persist after streaming completes
-        await self._persist_completion(
-            payload, response, assistant_message, conversation, completion_id, now, user,
-        )
+        try:
+            await self._persist_completion(
+                payload, response, assistant_message, conversation, completion_id, now, user,
+            )
+        except Exception:
+            # Log but don't fail — SSE response headers have already been sent,
+            # so raising here would cause ERR_INCOMPLETE_CHUNKED_ENCODING.
+            import logging
+            logging.getLogger(__name__).exception("Failed to persist chat completion")
 
     # ------------------------------------------------------------------
     # RAG enrichment
@@ -165,6 +171,8 @@ class ChatService:
         self,
         payload: ChatCompletionRequest,
         user: User,
+        *,
+        protected_objects: list | None = None,
     ) -> list[dict]:
         """Retrieve relevant document chunks and inject them into the messages.
 
@@ -190,7 +198,14 @@ class ChatService:
             chunks = await emb_service.retrieve(query, user, top_k=5)
         except Exception:
             # If retrieval fails (e.g. no documents, DB error, missing pgvector),
-            # rollback to clear PostgreSQL's aborted transaction state
+            # rollback to clear PostgreSQL's aborted transaction state.
+            # Expunge session-managed objects first to prevent rollback
+            # from expiring their attributes (causes MissingGreenlet in SSE context).
+
+            if protected_objects:
+                for obj in protected_objects:
+                    self.session.expunge(obj)
+            self.session.expunge(user)
             await self.session.rollback()
             return [m.model_dump() for m in payload.messages]
 
@@ -244,17 +259,24 @@ class ChatService:
         self.session.add(record)
 
         if conversation:
-            for msg in payload.messages:
-                if msg.role == "user":
-                    self.session.add(
-                        Message(
-                            id=f"msg-{uuid4().hex}",
-                            conversation_id=conversation.id,
-                            role=msg.role,
-                            content=msg.content,
-                            created_at=now,
-                        )
+            # Re-attach if it was expunged during RAG error recovery
+            if conversation not in self.session:
+                self.session.add(conversation)
+            # 只存最后一条 user 消息，避免把历史中的 user 消息重复写入
+            last_user_msg = next(
+                (m for m in reversed(payload.messages) if m.role == "user"),
+                None,
+            )
+            if last_user_msg:
+                self.session.add(
+                    Message(
+                        id=f"msg-{uuid4().hex}",
+                        conversation_id=conversation.id,
+                        role=last_user_msg.role,
+                        content=last_user_msg.content,
+                        created_at=now,
                     )
+                )
             self.session.add(
                 Message(
                     id=f"msg-{uuid4().hex}",
