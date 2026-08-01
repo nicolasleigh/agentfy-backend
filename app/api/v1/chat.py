@@ -52,5 +52,7 @@ async def _stream_events(
                 }
             ],
         }
+        if chunk.conversation_id:
+            data["conversation_id"] = chunk.conversation_id
         yield f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"

@@ -131,13 +131,17 @@ def test_chat_completion_stream_returns_sse() -> None:
 
     # Parse SSE lines
     lines = response.text.strip().split("\n\n")
-    assert len(lines) >= 2  # at least content chunks + [DONE]
+    assert len(lines) >= 3  # meta chunk + content chunks + [DONE]
 
-    # First data chunk
-    assert lines[0].startswith("data: ")
+    # First chunk is a meta chunk carrying the auto-created conversation id
     import json
     first = json.loads(lines[0][6:])
-    assert first["choices"][0]["delta"]["content"] == "Mock "
+    assert first["conversation_id"].startswith("conv-")
+    assert first["choices"][0]["delta"]["content"] == ""
+
+    # First content chunk
+    first_content = json.loads(lines[1][6:])
+    assert first_content["choices"][0]["delta"]["content"] == "Mock "
 
     # Last chunk should be [DONE]
     assert lines[-1] == "data: [DONE]"

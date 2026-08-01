@@ -22,10 +22,15 @@ class LLMStreamChunk(BaseModel):
 
     Every chunk carries ``content`` (the delta). The final chunk sets
     ``finish_reason`` — earlier chunks leave it ``None``.
+
+    ``conversation_id`` is set on a leading meta chunk when a conversation
+    was auto-created (the request had no ``conversation_id``) so the client
+    learns the new conversation.
     """
 
     content: str = ""
     finish_reason: str | None = None
+    conversation_id: str | None = None
 
 
 class BaseLLMProvider(ABC):

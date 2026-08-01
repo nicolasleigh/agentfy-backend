@@ -105,6 +105,10 @@ class ChatService:
 
         conversation = await self._resolve_conversation(payload, user)
 
+        # Lead with a meta chunk so the client learns the conversation id
+        # (relevant when one was auto-created from a request without an id).
+        yield LLMStreamChunk(conversation_id=conversation.id if conversation else None)
+
         # RAG enrichment: retrieve context and inject into messages
         messages = await self._enrich_with_context(payload, user, protected_objects=[conversation])
 
