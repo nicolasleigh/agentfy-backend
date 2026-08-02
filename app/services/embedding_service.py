@@ -81,7 +81,7 @@ class EmbeddingService:
                 dc.content,
                 dc.document_id,
                 d.filename,
-                (dc.embedding <=> :query_vector::vector) AS score
+                (dc.embedding <=> CAST(:query_vector AS vector)) AS score
             FROM document_chunks dc
             JOIN documents d ON d.id = dc.document_id
             WHERE d.user_id = :user_id
