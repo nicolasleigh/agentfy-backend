@@ -59,6 +59,24 @@ db-downgrade: ## 回滚一次迁移 (rev=目标版本, 默认 -1)
 db-history: ## 查看迁移历史
 	$(ALEMBIC) history
 
+docker-build: ## 构建 docker 镜像
+	docker compose build
+
+docker-up: ## 启动 docker 服务 (后端 + PostgreSQL)
+	docker compose up -d
+
+docker-dev: ## 启动 docker 开发模式 (源码挂载 + 热重载)
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+
+docker-down: ## 停止 docker 服务
+	docker compose down
+
+docker-logs: ## 跟踪后端日志
+	docker compose logs -f backend
+
+docker-db: ## 进入 postgres 交互式 shell
+	docker compose exec db psql -U app -d ai_chat
+
 clean: ## 清理缓存与临时文件
 	rm -rf .pytest_cache .ruff_cache app/**/__pycache__ alembic/**/__pycache__ tests/**/__pycache__
 	find . -name '*.pyc' -delete

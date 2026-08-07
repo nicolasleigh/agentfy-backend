@@ -1,0 +1,8 @@
+# 开发模式 override: 源码挂载 + uvicorn 热重载
+# 用法: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic

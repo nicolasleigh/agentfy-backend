@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.git/
+.env
+.env.*
+data/
+*.db
+dist/
+build/
+*.egg-info/
+docker-compose*.yml
+Makefile
+.dockerignore
