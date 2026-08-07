@@ -77,6 +77,12 @@ docker-logs: ## 跟踪后端日志
 docker-db: ## 进入 postgres 交互式 shell
 	docker compose exec db psql -U app -d ai_chat
 
+db-up: ## 只启动数据库容器 (PostgreSQL + pgvector), 配合本地 make dev 使用
+	docker compose up -d db
+
+db-down: ## 停止数据库容器 (保留数据卷)
+	docker compose stop db
+
 clean: ## 清理缓存与临时文件
 	rm -rf .pytest_cache .ruff_cache app/**/__pycache__ alembic/**/__pycache__ tests/**/__pycache__
 	find . -name '*.pyc' -delete
