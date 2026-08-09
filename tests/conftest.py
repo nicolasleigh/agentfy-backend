@@ -9,6 +9,8 @@ picks it up.
 import os
 
 os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///./data/test.db"
+# Known token for the MCP endpoint so tests can authenticate deterministically.
+os.environ["MCP_AUTH_TOKEN"] = "test-mcp-token"
 
 
 from collections.abc import AsyncGenerator, Generator

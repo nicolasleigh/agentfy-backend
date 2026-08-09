@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     # Embedding
     embedding_model: str = "nomic-embed-text"
 
+    # MCP server (Direction B) — static bearer token for the /mcp endpoint.
+    # Leave empty to lock the endpoint down (all requests rejected with 401).
+    mcp_auth_token: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     @field_validator("debug", mode="before")

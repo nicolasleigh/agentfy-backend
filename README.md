@@ -64,3 +64,45 @@ make docker-db      # 进入 postgres shell
   `LLM_PROVIDER` 等会优先读取项目 `.env` 里的同名变量。
 - PostgreSQL 数据保存在 named volume `db_data` 中，`docker compose down` 不会
   删除数据；如需彻底清理可加 `-v`。
+
+## MCP 服务
+
+后端在 `http://localhost:8000/mcp` 暴露一个 **MCP Server**（Streamable HTTP），
+让外部 MCP 客户端（Claude Code、Claude Desktop 等）直接检索知识库。
+
+暴露的工具：
+
+- `search_knowledge_base(query, top_k=5)` — 对全部文档做向量相似度检索，返回
+  命中的 chunk 内容、来源文档与分数
+- `list_documents()` — 列出知识库中现有的文档
+
+### 配置 token
+
+```bash
+# 生成一个随机 token 并写入 .env
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+在 `.env` 中设置 `MCP_AUTH_TOKEN=<生成的token>`。**不设置时 `/mcp` 会拒绝所有
+请求（401）**，保证安全默认。
+
+### 在 Claude Code 中使用
+
+在项目 `.mcp.json`（或全局 MCP 配置）中加入：
+
+```json
+{
+  "mcpServers": {
+    "ai-chat-kb": {
+      "type": "http",
+      "url": "http://localhost:8000/mcp",
+      "headers": {
+        "Authorization": "Bearer <MCP_AUTH_TOKEN>"
+      }
+    }
+  }
+}
+```
+
+然后即可在对话中让 Claude 检索知识库（注意：需运行在真实的 PostgreSQL +
+pgvector 数据库上，本地 sqlite 模式不支持向量检索）。

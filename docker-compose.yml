@@ -37,6 +37,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      # MCP endpoint token; empty = endpoint rejects all requests (401)
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
     ports:
       - "8000:8000"
     depends_on:
