@@ -106,3 +106,46 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 然后即可在对话中让 Claude 检索知识库（注意：需运行在真实的 PostgreSQL +
 pgvector 数据库上，本地 sqlite 模式不支持向量检索）。
+
+## MCP 客户端（让模型调用外部工具）
+
+后端也能作为 **MCP 客户端**：把外部 MCP Server 的工具（以及内部的知识库
+检索）暴露给模型，让模型在聊天中自主调用。这是 `tools_enabled` 请求参数开启的
+agentic 循环。
+
+### 配置外部 MCP Server
+
+在 `.env` 中设置 `MCP_SERVERS`（JSON 列表），后端启动时会连接并暴露它们的工具：
+
+```bash
+MCP_SERVERS=[{"name":"demo","url":"http://localhost:9100/mcp","auth_token":""}]
+```
+
+仓库自带一个 demo server（`get_current_time` / `echo` 两个玩具工具）：
+
+```bash
+.venv/bin/python scripts/demo_mcp_server.py   # 监听 9100
+```
+
+> Docker 里访问宿主机上的服务，用 `host.docker.internal` 代替 `localhost`。
+
+### 请求里开启
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "model": "llama3.1:8b",
+    "tools_enabled": true,
+    "messages": [{"role": "user", "content": "现在几点了？"}]
+  }'
+```
+
+开启 `tools_enabled` 时模型可调用两类工具：
+
+- `search_knowledge_base(query, top_k)` — 内部知识库检索（用户作用域）
+- `<server>:<tool>` — 外部 MCP Server 暴露的每个工具（名字带服务器前缀防冲突）
+
+关闭（默认）时行为与之前完全一致。注意工具调用依赖模型的 function
+calling 能力，建议使用支持工具的模型（如 `llama3.1`）。

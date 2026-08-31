@@ -1,4 +1,7 @@
-from collections.abc import AsyncGenerator
+import asyncio
+import json
+import logging
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -6,11 +9,13 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.mcp.agent import run_tool_loop
+from app.mcp.client import mcp_client_manager
 from app.models.chat_completion import ChatCompletion
 from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.user import User
-from app.providers import get_llm_provider, LLMResult, LLMStreamChunk
+from app.providers import LLMResult, LLMStreamChunk, get_llm_provider
 from app.schemas.chat import (
     ChatCompletionChoice,
     ChatCompletionRequest,
@@ -42,11 +47,29 @@ class ChatService:
         messages = await self._enrich_with_context(payload, user)
 
         try:
-            result: LLMResult = await self.llm.chat_completion(
-                model=payload.model,
-                messages=messages,
-                temperature=payload.temperature,
-            )
+            if payload.tools_enabled:
+                tools, tool_executor = await self._build_tools(user)
+                if tools:
+                    result = await run_tool_loop(
+                        self.llm,
+                        messages,
+                        payload.model,
+                        payload.temperature,
+                        tools,
+                        tool_executor,
+                    )
+                else:
+                    result = await self.llm.chat_completion(
+                        model=payload.model,
+                        messages=messages,
+                        temperature=payload.temperature,
+                    )
+            else:
+                result = await self.llm.chat_completion(
+                    model=payload.model,
+                    messages=messages,
+                    temperature=payload.temperature,
+                )
         except ConnectionError as e:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
@@ -112,35 +135,106 @@ class ChatService:
         # RAG enrichment: retrieve context and inject into messages
         messages = await self._enrich_with_context(payload, user, protected_objects=[conversation])
 
+        # Agentic tool path: run the tool loop in a task, emitting a
+        # ``tool_call`` SSE event as each tool starts, then the final answer
+        # in chunks once the loop finishes.
+        agentic_result: LLMResult | None = None
+        if payload.tools_enabled:
+            tools, tool_executor = await self._build_tools(user)
+            if tools:
+                events: asyncio.Queue[dict] = asyncio.Queue()
+
+                async def _on_tool(name: str, arguments: dict) -> None:
+                    events.put_nowait({"type": "tool_call", "name": name})
+
+                async def _run_loop() -> None:
+                    try:
+                        result = await run_tool_loop(
+                            self.llm,
+                            messages,
+                            payload.model,
+                            payload.temperature,
+                            tools,
+                            tool_executor,
+                            on_tool=_on_tool,
+                        )
+                        await events.put({"type": "result", "result": result})
+                    except Exception as e:  # noqa: BLE001 — surfaced to the stream
+                        await events.put({"type": "error", "error": e})
+
+                task = asyncio.create_task(_run_loop())
+                try:
+                    while True:
+                        event = await events.get()
+                        if event["type"] == "tool_call":
+                            yield LLMStreamChunk(tool_call=event["name"])
+                        elif event["type"] == "error":
+                            e = event["error"]
+                            if isinstance(e, ConnectionError):
+                                raise HTTPException(
+                                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                    detail=str(e),
+                                ) from e
+                            if isinstance(e, TimeoutError):
+                                raise HTTPException(
+                                    status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+                                    detail=str(e),
+                                ) from e
+                            logging.getLogger(__name__).exception(
+                                "Agentic loop failed", exc_info=e
+                            )
+                            raise HTTPException(
+                                status_code=status.HTTP_502_BAD_GATEWAY,
+                                detail=str(e),
+                            ) from e
+                        else:
+                            agentic_result = event["result"]
+                            break
+                finally:
+                    if not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+
         # Accumulate the full reply as chunks arrive
         full_content: list[str] = []
         final_reason: str = "stop"
-        try:
-            async for chunk in self.llm.chat_completion_stream(
-                model=payload.model,
-                messages=messages,
-                temperature=payload.temperature,
-            ):
-                if chunk.content:
-                    full_content.append(chunk.content)
-                if chunk.finish_reason:
-                    final_reason = chunk.finish_reason
-                yield chunk
-        except ConnectionError as e:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
-            ) from e
-        except TimeoutError as e:
-            raise HTTPException(
-                status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e),
-            ) from e
-        except RuntimeError as e:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e),
-            ) from e
+
+        if agentic_result is not None:
+            content = agentic_result.content
+            final_reason = agentic_result.finish_reason or "stop"
+            for i in range(0, len(content), 200):
+                yield LLMStreamChunk(content=content[i:i + 200])
+            yield LLMStreamChunk(finish_reason=final_reason)
+        else:
+            try:
+                async for chunk in self.llm.chat_completion_stream(
+                    model=payload.model,
+                    messages=messages,
+                    temperature=payload.temperature,
+                ):
+                    if chunk.content:
+                        full_content.append(chunk.content)
+                    if chunk.finish_reason:
+                        final_reason = chunk.finish_reason
+                    yield chunk
+            except ConnectionError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(e),
+                ) from e
+            except TimeoutError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=str(e),
+                ) from e
+            except RuntimeError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_502_BAD_GATEWAY, detail=str(e),
+                ) from e
+            content = "".join(full_content)
 
         # Build the full response for persistence
-        content = "".join(full_content)
         assistant_message = ChatMessage(role="assistant", content=content)
         response = ChatCompletionResponse(
             id=completion_id,
@@ -164,7 +258,6 @@ class ChatService:
         except Exception:
             # Log but don't fail — SSE response headers have already been sent,
             # so raising here would cause ERR_INCOMPLETE_CHUNKED_ENCODING.
-            import logging
             logging.getLogger(__name__).exception("Failed to persist chat completion")
 
     # ------------------------------------------------------------------
@@ -236,6 +329,76 @@ class ChatService:
             {"role": "system", "content": system_prompt},
             *[m.model_dump() for m in payload.messages],
         ]
+
+    # ------------------------------------------------------------------
+    # Tool calling (Direction A)
+    # ------------------------------------------------------------------
+
+    async def _build_tools(
+        self,
+        user: User,
+    ) -> tuple[list[dict], Callable[[str, dict], Awaitable[str]]]:
+        """Build LLM tool definitions and the executor that dispatches calls.
+
+        Always exposes a user-scoped knowledge-base search tool; additionally
+        exposes every tool from the configured external MCP servers.
+        """
+        tools: list[dict] = []
+
+        async def search_knowledge_base(query: str, top_k: int = 5) -> str:
+            """User-scoped RAG search (mirrors the automatic RAG injection)."""
+            try:
+                emb_service = EmbeddingService(self.session)
+                chunks = await emb_service.retrieve(query, user, top_k=max(1, min(top_k, 20)))
+            except Exception:
+                await self.session.rollback()
+                return "Knowledge base search failed."
+            if not chunks:
+                return "No relevant documents found in the knowledge base."
+            return json.dumps(
+                [
+                    {
+                        "filename": c.get("filename", ""),
+                        "content": c.get("content", ""),
+                        "score": c.get("score", 0),
+                    }
+                    for c in chunks
+                ],
+                ensure_ascii=False,
+            )
+
+        tools.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_knowledge_base",
+                    "description": (
+                        "Search the user's knowledge base for document chunks "
+                        "relevant to a question."
+                    ),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "The search query"},
+                            "top_k": {
+                                "type": "integer",
+                                "description": "Number of results to return (1-20)",
+                                "default": 5,
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                },
+            }
+        )
+        tools.extend(mcp_client_manager.get_external_tools())
+
+        async def executor(name: str, arguments: dict) -> str:
+            if name == "search_knowledge_base":
+                return await search_knowledge_base(**arguments)
+            return await mcp_client_manager.call_tool(name, arguments)
+
+        return tools, executor
 
     # ------------------------------------------------------------------
     # Shared helpers

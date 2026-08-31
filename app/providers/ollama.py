@@ -17,6 +17,7 @@ class OllamaProvider(BaseLLMProvider):
         model: str,
         messages: list[dict],
         temperature: float | None = None,
+        tools: list[dict] | None = None,
     ) -> LLMResult:
         url = f"{self.base_url}/v1/chat/completions"
         body: dict = {
@@ -26,6 +27,8 @@ class OllamaProvider(BaseLLMProvider):
         }
         if temperature is not None:
             body["temperature"] = temperature
+        if tools:
+            body["tools"] = tools
 
         try:
             async with httpx.AsyncClient(timeout=120, transport=httpx.AsyncHTTPTransport()) as client:
@@ -52,16 +55,18 @@ class OllamaProvider(BaseLLMProvider):
 
         choice = data["choices"][0]
         usage = data.get("usage", {})
+        message = choice["message"]
 
         return LLMResult(
-            content=choice["message"]["content"],
-            role=choice["message"].get("role", "assistant"),
+            content=message.get("content") or "",
+            role=message.get("role", "assistant"),
             finish_reason=choice.get("finish_reason", "stop"),
             prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             total_tokens=usage.get("total_tokens", 0),
             model=data.get("model", model),
             created=data.get("created", 0),
+            tool_calls=message.get("tool_calls") or [],
         )
 
     async def chat_completion_stream(
@@ -69,6 +74,7 @@ class OllamaProvider(BaseLLMProvider):
         model: str,
         messages: list[dict],
         temperature: float | None = None,
+        tools: list[dict] | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         url = f"{self.base_url}/v1/chat/completions"
         body: dict = {
@@ -78,6 +84,8 @@ class OllamaProvider(BaseLLMProvider):
         }
         if temperature is not None:
             body["temperature"] = temperature
+        if tools:
+            body["tools"] = tools
 
         try:
             async with httpx.AsyncClient(timeout=120, transport=httpx.AsyncHTTPTransport()) as client:

@@ -43,6 +43,10 @@ async def _stream_events(
 ):
     """Yield SSE-formatted bytes for each chunk."""
     async for chunk in service.create_completion_stream(payload, user):
+        if chunk.tool_call:
+            # The model is calling a tool — tell the client which one.
+            yield f"data: {json.dumps({'tool_call': chunk.tool_call}, ensure_ascii=False)}\n\n"
+            continue
         data = {
             "choices": [
                 {

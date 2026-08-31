@@ -17,6 +17,9 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     conversation_id: str | None = None
     rag_enabled: bool = True
+    # When True, the model may call tools (internal RAG search + external MCP
+    # tools). Off by default for backward compatibility.
+    tools_enabled: bool = False
 
 
 class ChatCompletionChoice(BaseModel):

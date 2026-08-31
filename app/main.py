@@ -1,9 +1,28 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.mcp.client import mcp_client_manager
 from app.mcp.server import create_mcp_server
+
+
+@asynccontextmanager
+async def _app_lifespan(app: FastAPI):
+    """Compose the MCP server's session manager with outbound MCP clients.
+
+    ``mcp_app.lifespan`` runs FastMCP's StreamableHTTPSessionManager; we also
+    connect the outbound MCP client manager (Direction A) and close it on exit.
+    """
+    mcp_app = app.state.mcp_app
+    async with mcp_app.lifespan(app):
+        await mcp_client_manager.connect()
+        try:
+            yield
+        finally:
+            await mcp_client_manager.close()
 
 
 def create_app() -> FastAPI:
@@ -15,8 +34,9 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         debug=settings.debug,
         version="0.1.0",
-        lifespan=mcp_app.lifespan,
+        lifespan=_app_lifespan,
     )
+    app.state.mcp_app = mcp_app
 
     app.add_middleware(
         CORSMiddleware,

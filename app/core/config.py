@@ -1,8 +1,16 @@
 from functools import lru_cache
 from typing import Annotated, Any
 
-from pydantic import Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class MCPServerConfig(BaseModel):
+    """An outbound MCP server the backend connects to as a client (Direction A)."""
+
+    name: str
+    url: str
+    auth_token: str | None = None
 
 
 class Settings(BaseSettings):
@@ -32,6 +40,11 @@ class Settings(BaseSettings):
     # MCP server (Direction B) — static bearer token for the /mcp endpoint.
     # Leave empty to lock the endpoint down (all requests rejected with 401).
     mcp_auth_token: str = ""
+
+    # MCP client (Direction A) — outbound servers whose tools are exposed to
+    # the LLM. Empty list = tool calling off (unless a request opts in, only
+    # the built-in RAG tool would be available).
+    mcp_servers: list[MCPServerConfig] = []
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

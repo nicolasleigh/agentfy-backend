@@ -39,6 +39,8 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       # MCP endpoint token; empty = endpoint rejects all requests (401)
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+      # MCP client servers; empty = no external tools (only built-in RAG tool)
+      MCP_SERVERS: ${MCP_SERVERS:-}
     ports:
       - "8000:8000"
     depends_on:

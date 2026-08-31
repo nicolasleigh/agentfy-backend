@@ -15,6 +15,10 @@ class LLMResult(BaseModel):
     total_tokens: int = 0
     model: str
     created: int  # unix timestamp
+    # Raw tool calls emitted by the model (OpenAI-compatible shape), e.g.
+    # ``[{"id": "call_...", "type": "function", "function": {...}}]``.
+    # Empty when the model answered directly.
+    tool_calls: list[dict] = []
 
 
 class LLMStreamChunk(BaseModel):
@@ -31,6 +35,9 @@ class LLMStreamChunk(BaseModel):
     content: str = ""
     finish_reason: str | None = None
     conversation_id: str | None = None
+    # Set when the model called a tool during the agentic loop — the client
+    # can surface "calling tool X" while the tool runs.
+    tool_call: str | None = None
 
 
 class BaseLLMProvider(ABC):
@@ -42,8 +49,14 @@ class BaseLLMProvider(ABC):
         model: str,
         messages: list[dict],
         temperature: float | None = None,
+        tools: list[dict] | None = None,
     ) -> LLMResult:
-        """Non-streaming completion — returns the full result at once."""
+        """Non-streaming completion — returns the full result at once.
+
+        ``tools`` is a list of OpenAI-compatible tool definitions
+        (``{"type": "function", "function": {...}}``). When the model decides
+        to call a tool, ``LLMResult.tool_calls`` is populated.
+        """
         ...
 
     @abstractmethod
@@ -52,6 +65,7 @@ class BaseLLMProvider(ABC):
         model: str,
         messages: list[dict],
         temperature: float | None = None,
+        tools: list[dict] | None = None,
     ) -> AsyncGenerator[LLMStreamChunk, None]:
         """Streaming completion — yields chunks as they arrive.
 
